@@ -1,0 +1,174 @@
+---
+title: "MS-E2112 Project"
+author: ""
+output:
+  bookdown::pdf_document2:
+    number_sections: no
+    toc: no
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE) 
+setwd("/Users/suvilaine/Downloads/Kurssit/multivariate")
+library(matrixStats)
+library(moments)
+library("ggplot2")
+library(GGally)
+options(rgl.useNULL=TRUE)
+library(rgl)
+set.seed(123)
+```
+
+Reading the data in and selecting only year 2018
+
+```{r}
+data <- read.csv('whr2018.csv')
+d18 <- data[data$Year=='2018',]
+d18
+```
+Remove year and some other columns
+
+```{r}
+d18 <- d18[-2] #year
+d18 <- d18[1:11]
+d18 <- d18[-9]
+d18 <- d18[-9]
+(d18 = na.omit(d18) )
+```
+
+Scale variables between 0 and 10
+
+```{r}
+d18[5] <- d18[5]/10
+d18[4] <- d18[4]*10
+d18[6] <- d18[6]*10
+d18[7] <- d18[7]*10
+d18[8] <- d18[8]*10
+d18[9] <- d18[9]*10
+d18
+```
+```{r}
+sapply(d18, sd, na.rm = TRUE)
+```
+
+```{r}
+summary(d18)
+```
+
+
+rename cols
+```{r}
+cols <- c("Country","Score", "Log GDP", "Social support", "Life expectancy", "Freedom", "Generosity", "Corruption", "Trust")
+(length(cols))
+colnames(d18)[1] <- cols[1]
+colnames(d18)[2] <- cols[2]
+colnames(d18)[3] <- cols[3]
+colnames(d18)[4] <- cols[4]
+colnames(d18)[5] <- cols[5]
+colnames(d18)[6] <- cols[6]
+colnames(d18)[7] <- cols[7]
+colnames(d18)[8] <- cols[8]
+colnames(d18)[9] <- cols[9]
+rownames(d18) <- d18[,1]
+non <- d18[-1]
+d18
+```
+
+
+
+```{r}
+
+
+ggpairs(non,columns=2:9)
+
+```
+
+applying PCA
+
+```{r}
+pca <- princomp(non)
+pca
+```
+```{r}
+pca$loadings
+summary(pca)
+```
+
+scree
+
+```{r}
+prop <- c(0.4127359, 0.3301142, 0.1010756, 0.08397749, 0.03572241, 0.01658878, 0.01448281, 0.005302847)
+nam <- c("Comp1", "Comp2", "Comp3", "Comp4", "Comp5", "Comp6", "Comp7", "Comp8")
+
+vars <- pca$sdev^2
+var_prop <- vars / sum(vars)
+var_prop_cum <- cumsum(var_prop)
+
+par(mfrow=c(1,2))
+plot(pca, las = 2, main = "Scree plot")
+plot(var_prop_cum, type = "b", pch = 21, lty = 3, bg = "skyblue", cex = 1.5,
+     ylim = c(0, 1), xlab = "Principal component",
+     ylab = "Cumulative proportion of variance explained", main = "Cumulative explained variance")
+```
+```{r}
+biplot(pca)
+```
+
+triplot
+```{r}
+rglwidget()
+#plot3d(pca$scores[,1:3]) 
+text3d(pca$scores[,1:3], texts=d18[,1])
+text3d(4*pca$loadings[,1:3], texts=rownames(pca$loadings), col="red")
+coords <- NULL
+for (i in 1:nrow(pca$loadings)) {
+  coords <- rbind(coords, rbind(c(0,0,0),3*pca$loadings[i,1:3]))}
+lines3d(coords, col="red", lwd=2)
+```
+
+K-means
+
+```{r}
+km <- kmeans(pca$scores[,1:3], 6, iter.max = 10, nstart = 1)
+km
+```
+
+
+```{r}
+library(rworldmap)
+library(sp)
+
+#create a map-shaped window
+#mapDevice('x11')
+#join to a coarse resolution map
+spdf <- joinCountryData2Map(km$cluster, joinCode="NAME", nameJoinColumn="country")
+
+mapCountryData(spdf, nameColumnToPlot="value", catMethod="fixedWidth")
+```
+```{r}
+library(RColorBrewer)
+library(maptools)
+library(imputeTS)
+
+clusters <- data.frame(km$cluster)
+
+data(wrld_simpl)
+pal <- colorRampPalette(brewer.pal(7, 'Set2'))(7)#(length(7))#km$cluster))
+pal <- pal[clusters[,1]]#findInterval(km$cluster, sort(unique(km$cluster))))]
+
+col <- rep(grey(0.8), length(wrld_simpl@data$NAME))
+col[na.replace(match(rownames(clusters), wrld_simpl@data$NAME),0)] <- pal
+
+plot(wrld_simpl, col = col)
+```
+```{r}
+pal <- colorRampPalette(brewer.pal(7, 'Set3'))(7)
+clusters['country'] <- rownames(clusters)
+#join data to a map to create a spatialPolygonsDataFrame
+sPDF <- joinCountryData2Map(clusters, joinCode='NAME', nameJoinColumn='country')
+
+#default map (see rworldmap documentation for options e.g. catMethod, numCats, colourPalette, mapRegion)
+#missingCountryCol used for NA and countries not in the join file
+mapCountryData(sPDF, nameColumnToPlot='km.cluster', missingCountryCol='grey', colourPalette = pal, catMethod = 'categorical', mapTitle = 'Happiness clusters of the world')
+```
+
